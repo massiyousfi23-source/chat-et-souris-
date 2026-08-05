@@ -18,6 +18,61 @@
     <link rel="preload" href="./assets/characters/mouse-gray-sprite.png" as="image">
     <link rel="preload" href="./assets/characters/mouse-gold-sprite.png" as="image">
     <link rel="stylesheet" href="./styles.css">
+    <style>
+      /* Le panneau d'accueil doit rester utilisable sur les petits écrans mobiles. */
+      @media (max-width: 560px), (max-height: 760px) {
+        .game-overlay {
+          display: block;
+          overflow-x: hidden;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+          padding: 8px 10px 14px;
+          touch-action: pan-y;
+        }
+
+        .overlay-card {
+          width: min(100%, 430px);
+          min-height: 100%;
+          margin: 0 auto;
+          padding: 2px 0 10px;
+        }
+
+        .overlay-actions {
+          position: sticky;
+          z-index: 4;
+          bottom: 0;
+          padding: 7px 0 max(7px, env(safe-area-inset-bottom));
+          background: linear-gradient(to bottom, rgba(9, 8, 34, 0), rgba(9, 8, 34, 0.94) 32%);
+        }
+
+        .primary-button {
+          flex: 0 0 auto;
+        }
+      }
+
+      @media (max-height: 650px) and (orientation: portrait) {
+        .overlay-portrait {
+          width: min(32%, 105px);
+          margin-top: 4px;
+        }
+
+        .overlay-card h1 {
+          margin: 5px 0 4px;
+          font-size: clamp(1.25rem, 7vw, 1.9rem);
+        }
+
+        .overlay-card p {
+          margin-bottom: 5px;
+          font-size: 0.6rem;
+          line-height: 1.25;
+        }
+
+        .overlay-rewards {
+          margin-bottom: 5px;
+        }
+      }
+    </style>
   </head>
   <body data-game-state="idle" data-room="salon">
     <div class="ambient ambient--cyan" aria-hidden="true"></div>
