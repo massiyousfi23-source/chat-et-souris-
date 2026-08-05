@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Chat et Souris</title>
+  <desc id="desc">Une tête de chat tigré devant une souris dorée.</desc>
+  <defs>
+    <linearGradient id="bg" x1="45" y1="28" x2="462" y2="484" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#44e5e7"/>
+      <stop offset=".47" stop-color="#9d6cff"/>
+      <stop offset="1" stop-color="#ff5da8"/>
+    </linearGradient>
+    <linearGradient id="cat" x1="142" y1="135" x2="343" y2="386" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d8a460"/>
+      <stop offset="1" stop-color="#7a4a2d"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="338" y1="292" x2="452" y2="411" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff59b"/>
+      <stop offset=".45" stop-color="#ffd34e"/>
+      <stop offset="1" stop-color="#e99a00"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="256" cy="255" r="198" fill="#151344" fill-opacity=".36"/>
+  <path d="M127 200 104 93l99 56a177 177 0 0 1 106 0l99-56-23 107c30 38 42 83 32 129-16 76-80 126-161 126S111 405 95 329c-10-46 2-91 32-129Z" fill="url(#cat)" stroke="#351f28" stroke-width="17" stroke-linejoin="round"/>
+  <path d="m163 152 32 74M217 137l17 89M349 152l-32 74M295 137l-17 89" fill="none" stroke="#3a2826" stroke-width="18" stroke-linecap="round"/>
+  <path d="M162 280c32-21 66-17 82 11-28 22-61 20-82-11ZM350 280c-32-21-66-17-82 11 28 22 61 20 82-11Z" fill="#fff7b4" stroke="#351f28" stroke-width="12" stroke-linejoin="round"/>
+  <ellipse cx="209" cy="286" rx="8" ry="25" fill="#151344"/>
+  <ellipse cx="303" cy="286" rx="8" ry="25" fill="#151344"/>
+  <path d="m256 319-25-13c0-20 50-20 50 0l-25 13Z" fill="#ef8a75" stroke="#351f28" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M256 319v25M256 344c-17 20-43 18-55 4M256 344c17 20 43 18 55 4" fill="none" stroke="#351f28" stroke-width="10" stroke-linecap="round"/>
+  <g transform="translate(351 326) rotate(-12)">
+    <ellipse cx="42" cy="47" rx="64" ry="48" fill="url(#gold)" stroke="#7b4f00" stroke-width="11"/>
+    <circle cx="77" cy="17" r="27" fill="#ffb18f" stroke="#7b4f00" stroke-width="10"/>
+    <circle cx="88" cy="45" r="8" fill="#151344"/>
+    <circle cx="105" cy="58" r="7" fill="#ef7f6d"/>
+    <path d="M-17 51c-35-29-57 3-34 20" fill="none" stroke="#ef8a75" stroke-width="9" stroke-linecap="round"/>
+  </g>
+  <path d="M67 404c64 24 95 24 139 8" fill="none" stroke="#fff" stroke-opacity=".32" stroke-width="13" stroke-linecap="round"/>
+</svg>

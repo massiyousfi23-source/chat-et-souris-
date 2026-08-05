@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#151344">
+    <meta name="description" content="Un chat tigré, des souris rapides et un piège doré dans un appartement très coloré.">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Chat & Souris">
+    <title>Chat & Souris — La chasse de l'appart</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+    <link rel="preload" href="./assets/characters/hero-sprite.png" as="image">
+    <link rel="preload" href="./assets/characters/villain-sprite.png" as="image">
+    <link rel="preload" href="./assets/characters/mouse-gray-sprite.png" as="image">
+    <link rel="preload" href="./assets/characters/mouse-gold-sprite.png" as="image">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body data-game-state="idle" data-room="salon">
+    <div class="ambient ambient--cyan" aria-hidden="true"></div>
+    <div class="ambient ambient--pink" aria-hidden="true"></div>
+    <div class="ambient ambient--yellow" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="Chat et Souris, accueil">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48" role="img">
+              <path d="M10.5 18.2 7.7 7.6l10.1 5.7a21 21 0 0 1 12.4 0l10.1-5.7-2.8 10.6a17 17 0 0 1 3.2 9.9c0 9-7.5 14.5-16.7 14.5S7.3 37.1 7.3 28.1a17 17 0 0 1 3.2-9.9Z"/>
+              <path d="M17 27.5h.1M31 27.5h.1M21 34c1.7 1.2 4.3 1.2 6 0"/>
+            </svg>
+          </span>
+          <span>
+            <strong>CHAT <em>&</em> SOURIS</strong>
+            <small>LA CHASSE DE L'APPART</small>
+          </span>
+        </a>
+
+        <div class="top-actions">
+          <button class="icon-button" id="soundButton" type="button" aria-label="Couper le son" aria-pressed="true">
+            <svg class="sound-on" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9v6h4l5 4V5L8 9H4Z"></path>
+              <path d="M16 9.5a4 4 0 0 1 0 5M18.7 7a7.5 7.5 0 0 1 0 10"></path>
+            </svg>
+            <svg class="sound-off" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9v6h4l5 4V5L8 9H4Z"></path>
+              <path d="m17 10 4 4m0-4-4 4"></path>
+            </svg>
+          </button>
+          <button class="icon-button" id="helpButton" type="button" aria-label="Voir les règles">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M9.8 9a2.4 2.4 0 0 1 4.6 1c0 1.8-2.4 2.1-2.4 3.8M12 17.2h.01"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="scoreboard" aria-label="Tableau de score">
+        <article class="stat-card stat-card--score">
+          <span>Score</span>
+          <strong id="scoreValue">0000</strong>
+        </article>
+        <article class="stat-card">
+          <span>Record</span>
+          <strong id="bestValue">0000</strong>
+        </article>
+        <article class="stat-card stat-card--room">
+          <span>Pièce</span>
+          <strong id="roomValue">SALON POP</strong>
+        </article>
+        <article class="stat-card stat-card--timer">
+          <span>Temps</span>
+          <strong id="timerValue">00:55</strong>
+        </article>
+      </section>
+
+      <section class="game-card">
+        <div class="board-toolbar">
+          <div class="live-indicator" aria-live="polite">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span id="statusLabel">EN ATTENTE</span>
+          </div>
+          <div class="mission-pill">
+            <span aria-hidden="true">🐭</span>
+            <strong id="missionValue">0 / 8</strong>
+          </div>
+          <button class="pause-button" id="pauseButton" type="button" disabled>
+            <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 5v14M16 5v14"></path>
+            </svg>
+            <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m8 5 11 7-11 7V5Z"></path>
+            </svg>
+            <span id="pauseLabel">Pause</span>
+          </button>
+        </div>
+
+        <div class="board-frame" id="boardFrame">
+          <canvas id="gameCanvas" width="900" height="700" tabindex="0" aria-label="Terrain de jeu. Attrape les souris et évite le piège doré."></canvas>
+
+          <div class="danger-flash" id="dangerFlash" aria-hidden="true"></div>
+          <div class="trap-banner" id="trapBanner" role="status" hidden>
+            <span>PIÈGE !</span>
+            <strong>LE MÉCHANT SE RÉVEILLE</strong>
+          </div>
+
+          <div class="game-overlay" id="gameOverlay" role="dialog" aria-modal="true" aria-labelledby="overlayTitle">
+            <canvas class="celebration-layer" id="celebrationCanvas" width="900" height="700" aria-hidden="true"></canvas>
+            <div class="overlay-card">
+              <span class="overlay-kicker" id="overlayKicker">PRÊT À CHASSER ?</span>
+              <div class="overlay-portrait" id="overlayPortrait" aria-hidden="true">
+                <img id="overlayPortraitImage" src="./assets/characters/hero-sprite.png" alt="">
+              </div>
+              <h1 id="overlayTitle">CHAT <em>&</em><br>SOURIS</h1>
+              <p id="overlayMessage">Attrape les souris grises. Cherche les dorées derrière les meubles… mais méfie-toi de leur secret.</p>
+              <div class="overlay-rewards" id="overlayRewards">
+                <span><b class="mouse-dot mouse-dot--gray"></b> +10</span>
+                <span><b class="mouse-dot mouse-dot--gold"></b> +100</span>
+                <span><b class="paw-dot">🐾</b> −50</span>
+              </div>
+              <div class="overlay-actions">
+                <button class="primary-button" id="primaryAction" type="button">
+                  <span id="primaryActionLabel">JOUER</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m9 5 10 7-10 7V5Z"></path>
+                  </svg>
+                </button>
+                <button class="secondary-button" id="shareButton" type="button" hidden>PARTAGER MON SCORE</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="level-track" aria-label="Progression dans l'appartement">
+          <div class="track-line"><span id="trackProgress"></span></div>
+          <div class="track-stages">
+            <div class="stage is-active" data-stage="0">
+              <span class="stage-dot"></span>
+              <strong>Salon</strong>
+              <small>8 souris</small>
+            </div>
+            <div class="stage" data-stage="1">
+              <span class="stage-dot"></span>
+              <strong>Cuisine</strong>
+              <small>10 souris</small>
+            </div>
+            <div class="stage" data-stage="2">
+              <span class="stage-dot"></span>
+              <strong>Chambre</strong>
+              <small>12 souris</small>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="mobile-controls" aria-label="Commandes tactiles">
+        <p>MAINTIENS UNE FLÈCHE · OU GLISSE SUR LE JEU</p>
+        <div class="d-pad">
+          <button class="control-button control-button--up" type="button" data-direction="up" aria-label="Monter">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7"></path></svg>
+          </button>
+          <button class="control-button control-button--left" type="button" data-direction="left" aria-label="Aller à gauche">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"></path></svg>
+          </button>
+          <span class="d-pad-center" aria-hidden="true">🐾</span>
+          <button class="control-button control-button--right" type="button" data-direction="right" aria-label="Aller à droite">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"></path></svg>
+          </button>
+          <button class="control-button control-button--down" type="button" data-direction="down" aria-label="Descendre">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 9 7 7 7-7"></path></svg>
+          </button>
+        </div>
+      </section>
+
+      <footer>
+        <span>FLÈCHES · ZQSD · WASD · TACTILE</span>
+        <span>INSTALLABLE · HORS CONNEXION</span>
+      </footer>
+    </main>
+
+    <dialog class="help-dialog" id="helpDialog">
+      <div class="dialog-content">
+        <button class="dialog-close" id="helpClose" type="button" aria-label="Fermer">×</button>
+        <span class="dialog-kicker">RÈGLES DU JEU</span>
+        <h2>Une chasse pleine de surprises.</h2>
+        <ul class="rules-list">
+          <li>
+            <span class="rule-icon rule-icon--gray">🐭</span>
+            <p><strong>Souris grise : +10 points.</strong><br>Elle court dans la pièce. Attrape le nombre demandé avant la fin du temps.</p>
+          </li>
+          <li>
+            <span class="rule-icon rule-icon--gold">🐭</span>
+            <p><strong>Souris dorée : +100 points.</strong><br>Elle se cache derrière certains meubles et vaut dix souris grises.</p>
+          </li>
+          <li>
+            <span class="rule-icon rule-icon--danger">🐾</span>
+            <p><strong>Attention au faux trésor.</strong><br>Une souris dorée peut devenir le méchant. Son coup de patte retire 50 points.</p>
+          </li>
+          <li>
+            <span class="rule-icon rule-icon--room">⌂</span>
+            <p><strong>Trois pièces à explorer.</strong><br>Le salon, la cuisine puis la chambre deviennent progressivement plus rapides.</p>
+          </li>
+        </ul>
+        <button class="primary-button primary-button--full" id="helpPlay" type="button">J'AI COMPRIS</button>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="./game.js" defer></script>
+  </body>
+</html>
