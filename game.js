@@ -1,3 +1,5 @@
+import { createWorld } from "./scene3d.js?v=3d1";
+
 (() => {
   "use strict";
 
@@ -14,7 +16,7 @@
       name: "SALON POP",
       label: "LE SALON POP",
       target: 8,
-      seconds: 55,
+      seconds: 65,
       grayCount: 3,
       playerSpeed: 242,
       mouseSpeed: [86, 122],
@@ -43,7 +45,7 @@
       name: "CUISINE SOLAIRE",
       label: "LA CUISINE SOLAIRE",
       target: 10,
-      seconds: 52,
+      seconds: 62,
       grayCount: 4,
       playerSpeed: 252,
       mouseSpeed: [98, 136],
@@ -73,7 +75,7 @@
       name: "CHAMBRE NÉON",
       label: "LA CHAMBRE NÉON",
       target: 12,
-      seconds: 49,
+      seconds: 59,
       grayCount: 4,
       playerSpeed: 260,
       mouseSpeed: [108, 148],
@@ -135,11 +137,18 @@
     trapBanner: document.querySelector("#trapBanner"),
     dangerFlash: document.querySelector("#dangerFlash"),
     celebrationCanvas: document.querySelector("#celebrationCanvas"),
+    radarCanvas: document.querySelector("#radarCanvas"),
+    labelLayer: document.querySelector("#labelLayer"),
+    touchStick: document.querySelector("#touchStick"),
   };
 
-  const context = elements.canvas.getContext("2d");
+  // Commandes « derrière le chat » : avancer / reculer et tourner.
+  const CONTROLS = Object.freeze({ turnSpeed: 3.1, backwardFactor: 0.6, stickRadius: 56 });
+  // Un peu de marge pour attraper : en 3D, les distances sont plus dures à juger.
+  const CATCH_BONUS = 8;
+
   const celebrationContext = elements.celebrationCanvas.getContext("2d");
-  const images = {};
+  let world3d = null;
   const imageSources = {
     hero: "./assets/characters/hero-sprite.png",
     villain: "./assets/characters/villain-sprite.png",
@@ -157,9 +166,8 @@
   let canvasScale = 1;
   let pixelRatio = 1;
   let toastTimer = null;
-  let swipeDirection = null;
-  let swipePointer = null;
-  let swipeStart = null;
+  // Joystick tactile : on pose le doigt sur le jeu et on le fait glisser.
+  const stick = { pointer: null, startX: 0, startY: 0, turn: 0, forward: 0 };
   let helpPausedGame = false;
   let celebration = createCelebration();
   const heldDirections = new Set();
@@ -190,6 +198,7 @@
       radius: 34,
       angle: -Math.PI / 2,
       moving: false,
+      turn: 0,
       bob: 0,
       invulnerable: 0,
     };
@@ -203,22 +212,6 @@
       colors: [],
       particles: [],
     };
-  }
-
-  async function loadAssets() {
-    await Promise.all(
-      Object.entries(imageSources).map(
-        ([key, source]) =>
-          new Promise((resolve) => {
-            const image = new Image();
-            image.decoding = "async";
-            image.onload = () => resolve();
-            image.onerror = () => resolve();
-            image.src = source;
-            images[key] = image;
-          }),
-      ),
-    );
   }
 
   function readStoredValue(key, fallback) {
@@ -295,7 +288,7 @@
     if (game.state !== "playing") return;
     setGameState("paused");
     heldDirections.clear();
-    swipeDirection = null;
+    releaseStick();
     updatePressedButtons();
     if (showPauseOverlay) {
       showOverlay({
@@ -425,6 +418,9 @@
         hideOverlay();
         playSound("start");
         break;
+      case "reload":
+        window.location.reload();
+        break;
       case "restart":
       case "start":
       default:
@@ -516,30 +512,37 @@
     const input = readInputVector();
     const player = game.player;
     const level = currentLevel();
-    const magnitude = Math.hypot(input.x, input.y);
 
-    if (magnitude > 0) {
-      const velocityX = (input.x / magnitude) * level.playerSpeed;
-      const velocityY = (input.y / magnitude) * level.playerSpeed;
-      moveCircle(player, velocityX * delta, velocityY * delta, player.radius);
-      player.angle = Math.atan2(velocityY, velocityX);
+    // Tourner sur place ou en courant.
+    player.turn = input.turn;
+    player.angle += input.turn * CONTROLS.turnSpeed * delta;
+
+    if (Math.abs(input.forward) > 0.05) {
+      const factor = input.forward > 0 ? input.forward : input.forward * CONTROLS.backwardFactor;
+      const speed = level.playerSpeed * factor;
+      moveCircle(player, Math.cos(player.angle) * speed * delta, Math.sin(player.angle) * speed * delta, player.radius);
       player.moving = true;
       player.bob += delta * 11;
     } else {
-      player.moving = false;
+      player.moving = Math.abs(input.turn) > 0.05;
       player.bob += delta * 3;
     }
   }
 
+  // Renvoie { turn, forward } entre -1 et 1.
+  // Flèches / ZQSD : haut = avancer, bas = reculer, gauche / droite = tourner.
   function readInputVector() {
-    const vector = { x: 0, y: 0 };
-    const directions = new Set(heldDirections);
-    if (swipeDirection) directions.add(swipeDirection);
-    if (directions.has("left")) vector.x -= 1;
-    if (directions.has("right")) vector.x += 1;
-    if (directions.has("up")) vector.y -= 1;
-    if (directions.has("down")) vector.y += 1;
-    return vector;
+    let turn = 0;
+    let forward = 0;
+    if (heldDirections.has("left")) turn -= 1;
+    if (heldDirections.has("right")) turn += 1;
+    if (heldDirections.has("up")) forward += 1;
+    if (heldDirections.has("down")) forward -= 1;
+    if (stick.pointer !== null) {
+      turn += stick.turn;
+      forward += stick.forward;
+    }
+    return { turn: clamp(turn, -1, 1), forward: clamp(forward, -1, 1) };
   }
 
   function moveCircle(entity, dx, dy, radius) {
@@ -696,7 +699,7 @@
     const player = game.player;
     for (let index = game.mice.length - 1; index >= 0; index -= 1) {
       const mouse = game.mice[index];
-      if (distance(player.x, player.y, mouse.x, mouse.y) > player.radius + mouse.radius) continue;
+      if (distance(player.x, player.y, mouse.x, mouse.y) > player.radius + mouse.radius + CATCH_BONUS) continue;
       game.mice.splice(index, 1);
       game.caught += 1;
       addScore(SCORE.gray);
@@ -708,7 +711,7 @@
 
     const gold = game.goldMouse;
     if (!gold || gold.hidden) return;
-    if (distance(player.x, player.y, gold.x, gold.y) > player.radius + gold.radius) return;
+    if (distance(player.x, player.y, gold.x, gold.y) > player.radius + gold.radius + CATCH_BONUS) return;
 
     game.goldMouse = null;
     if (gold.trap) {
@@ -726,7 +729,7 @@
   function triggerTrap(goldMouse) {
     setGameState("trap");
     heldDirections.clear();
-    swipeDirection = null;
+    releaseStick();
     updatePressedButtons();
     const player = game.player;
     const angleToPlayer = Math.atan2(player.y - goldMouse.y, player.x - goldMouse.x);
@@ -843,572 +846,16 @@
     const bounds = elements.boardFrame.getBoundingClientRect();
     pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     canvasScale = bounds.width / WORLD.width;
-    elements.canvas.width = Math.max(1, Math.round(bounds.width * pixelRatio));
-    elements.canvas.height = Math.max(1, Math.round(bounds.height * pixelRatio));
-    context.setTransform(canvasScale * pixelRatio, 0, 0, canvasScale * pixelRatio, 0, 0);
+    world3d?.resize(bounds.width, bounds.height, pixelRatio);
 
-    elements.celebrationCanvas.width = elements.canvas.width;
-    elements.celebrationCanvas.height = elements.canvas.height;
+    elements.celebrationCanvas.width = Math.max(1, Math.round(bounds.width * pixelRatio));
+    elements.celebrationCanvas.height = Math.max(1, Math.round(bounds.height * pixelRatio));
     celebrationContext.setTransform(canvasScale * pixelRatio, 0, 0, canvasScale * pixelRatio, 0, 0);
   }
 
   function draw(timestamp, delta) {
-    context.save();
-    context.setTransform(canvasScale * pixelRatio, 0, 0, canvasScale * pixelRatio, 0, 0);
-    context.clearRect(0, 0, WORLD.width, WORLD.height);
-    drawRoom(timestamp);
-    drawHiddenGoldenMouse(timestamp);
-    currentLevel().obstacles.forEach((obstacle, index) => drawObstacle(obstacle, index));
-    game.mice.forEach((mouse) => drawMouse(mouse, false, timestamp));
-    if (game.goldMouse && !game.goldMouse.hidden) drawMouse(game.goldMouse, true, timestamp);
-    drawPlayer(timestamp);
-    if (game.trap) drawTrap(timestamp);
-    drawParticles();
-    drawFloatTexts();
-    context.restore();
+    world3d?.render(game, currentLevel(), timestamp, delta);
     drawCelebration();
-  }
-
-  function drawRoom(timestamp) {
-    const level = currentLevel();
-    const gradient = context.createLinearGradient(0, 0, WORLD.width, WORLD.height);
-    gradient.addColorStop(0, level.floor[0]);
-    gradient.addColorStop(1, level.floor[1]);
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, WORLD.width, WORLD.height);
-
-    context.save();
-    context.globalAlpha = 0.13;
-    context.strokeStyle = "#ffffff";
-    context.lineWidth = 2;
-    const spacing = 42;
-    if (level.id === "salon") {
-      for (let x = -WORLD.height; x < WORLD.width; x += spacing) {
-        context.beginPath();
-        context.moveTo(x, 0);
-        context.lineTo(x + WORLD.height, WORLD.height);
-        context.stroke();
-      }
-    } else if (level.id === "cuisine") {
-      for (let x = 0; x < WORLD.width; x += 70) {
-        for (let y = 0; y < WORLD.height; y += 70) {
-          context.globalAlpha = ((x + y) / 70) % 2 === 0 ? 0.16 : 0.06;
-          context.fillStyle = "#ffffff";
-          context.fillRect(x, y, 70, 70);
-        }
-      }
-    } else {
-      for (let y = 0; y < WORLD.height; y += 34) {
-        context.beginPath();
-        context.moveTo(0, y + Math.sin(timestamp / 700 + y) * 3);
-        context.lineTo(WORLD.width, y + Math.cos(timestamp / 800 + y) * 3);
-        context.stroke();
-      }
-    }
-    context.restore();
-
-    drawRug(level.rug);
-    drawWalls(level);
-    drawRoomDetails(level, timestamp);
-  }
-
-  function drawWalls(level) {
-    context.save();
-    context.fillStyle = "rgba(0, 0, 0, 0.18)";
-    context.fillRect(18, 18, WORLD.width - 36, 23);
-    context.fillRect(18, 18, 23, WORLD.height - 36);
-    context.fillStyle = level.wall;
-    context.fillRect(0, 0, WORLD.width, 24);
-    context.fillRect(0, 0, 24, WORLD.height);
-    context.fillRect(0, WORLD.height - 24, WORLD.width, 24);
-    context.fillRect(WORLD.width - 24, 0, 24, WORLD.height);
-    context.fillStyle = "rgba(255,255,255,.34)";
-    context.fillRect(24, 24, WORLD.width - 48, 4);
-    context.restore();
-  }
-
-  function drawRug(rug) {
-    context.save();
-    context.shadowColor = "rgba(27, 11, 55, 0.25)";
-    context.shadowBlur = 20;
-    context.shadowOffsetY = 10;
-    fillRoundedRect(rug.x, rug.y, rug.width, rug.height, 46, rug.color);
-    context.shadowColor = "transparent";
-    context.globalAlpha = 0.15;
-    context.strokeStyle = "#ffffff";
-    context.lineWidth = 5;
-    for (let inset = 18; inset < 72; inset += 17) {
-      strokeRoundedRect(rug.x + inset, rug.y + inset, rug.width - inset * 2, rug.height - inset * 2, 34);
-    }
-    context.restore();
-  }
-
-  function drawRoomDetails(level, timestamp) {
-    context.save();
-    if (level.id === "salon") {
-      drawPicture(500, 54, 100, 48, "#ffd34e", "#ff5da8");
-      drawBall(586, 575, 18, timestamp, ["#ffd34e", "#ff5da8"]);
-    } else if (level.id === "cuisine") {
-      drawPlate(365, 195, "#ff5da8");
-      drawPlate(550, 198, "#44e5e7");
-      drawBall(615, 610, 16, timestamp, ["#44e5e7", "#9d6cff"]);
-    } else {
-      drawPicture(548, 46, 72, 48, "#44e5e7", "#ffd34e");
-      drawBall(590, 595, 17, timestamp, ["#ff5da8", "#ffd34e"]);
-      context.globalAlpha = 0.32;
-      context.fillStyle = "#fff";
-      for (let index = 0; index < 8; index += 1) {
-        const x = 580 + index * 28;
-        const y = 215 + Math.sin(timestamp / 400 + index) * 4;
-        context.beginPath();
-        context.arc(x, y, 3, 0, Math.PI * 2);
-        context.fill();
-      }
-    }
-    context.restore();
-  }
-
-  function drawPicture(x, y, width, height, colorOne, colorTwo) {
-    context.save();
-    context.shadowColor = "rgba(0,0,0,.22)";
-    context.shadowBlur = 10;
-    context.shadowOffsetY = 5;
-    fillRoundedRect(x, y, width, height, 8, "#fff5e5");
-    const gradient = context.createLinearGradient(x, y, x + width, y + height);
-    gradient.addColorStop(0, colorOne);
-    gradient.addColorStop(1, colorTwo);
-    fillRoundedRect(x + 7, y + 7, width - 14, height - 14, 5, gradient);
-    context.restore();
-  }
-
-  function drawBall(x, y, radius, timestamp, colors) {
-    context.save();
-    context.translate(x, y + Math.sin(timestamp / 430) * 2);
-    context.rotate(timestamp / 1200);
-    const gradient = context.createLinearGradient(-radius, -radius, radius, radius);
-    gradient.addColorStop(0, colors[0]);
-    gradient.addColorStop(1, colors[1]);
-    context.fillStyle = gradient;
-    context.shadowColor = "rgba(0,0,0,.28)";
-    context.shadowBlur = 8;
-    context.shadowOffsetY = 5;
-    context.beginPath();
-    context.arc(0, 0, radius, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = "rgba(255,255,255,.55)";
-    context.lineWidth = 3;
-    context.beginPath();
-    context.arc(0, 0, radius * 0.72, -1, 1.7);
-    context.stroke();
-    context.restore();
-  }
-
-  function drawPlate(x, y, color) {
-    context.save();
-    context.fillStyle = "rgba(0,0,0,.18)";
-    context.beginPath();
-    context.ellipse(x, y + 5, 27, 14, 0, 0, Math.PI * 2);
-    context.fill();
-    context.fillStyle = "#fff9ec";
-    context.beginPath();
-    context.ellipse(x, y, 27, 14, 0, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = color;
-    context.lineWidth = 4;
-    context.beginPath();
-    context.ellipse(x, y, 19, 9, 0, 0, Math.PI * 2);
-    context.stroke();
-    context.restore();
-  }
-
-  function drawObstacle(obstacle, index) {
-    context.save();
-    context.shadowColor = "rgba(18, 10, 45, 0.32)";
-    context.shadowBlur = 18;
-    context.shadowOffsetY = 11;
-    fillRoundedRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height, 20, "rgba(22, 13, 45, .22)");
-    context.shadowColor = "transparent";
-
-    switch (obstacle.type) {
-      case "sofa":
-      case "armchair":
-        drawSeat(obstacle);
-        break;
-      case "coffee":
-      case "dining":
-        drawTable(obstacle);
-        break;
-      case "tv":
-        drawTelevision(obstacle);
-        break;
-      case "plant":
-        drawPlant(obstacle);
-        break;
-      case "counter":
-      case "island":
-        drawCounter(obstacle);
-        break;
-      case "fridge":
-        drawFridge(obstacle);
-        break;
-      case "pantry":
-      case "dresser":
-      case "nightstand":
-        drawCabinet(obstacle);
-        break;
-      case "bed":
-        drawBed(obstacle);
-        break;
-      case "ottoman":
-        drawOttoman(obstacle);
-        break;
-      case "wardrobe":
-        drawWardrobe(obstacle);
-        break;
-      default:
-        fillRoundedRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height, 18, obstacle.color);
-        break;
-    }
-
-    if (game.goldMouse?.hidden && game.goldMouse.coverObstacle === index) {
-      context.save();
-      context.globalAlpha = 0.5 + Math.sin(game.goldMouse.revealPulse * 5) * 0.18;
-      context.strokeStyle = "#fff3a6";
-      context.lineWidth = 4;
-      context.shadowColor = "#ffd34e";
-      context.shadowBlur = 14;
-      const sideX = clamp(game.goldMouse.x, obstacle.x, obstacle.x + obstacle.width);
-      const sideY = clamp(game.goldMouse.y, obstacle.y, obstacle.y + obstacle.height);
-      context.beginPath();
-      context.arc(sideX, sideY, 11, 0, Math.PI * 2);
-      context.stroke();
-      context.restore();
-    }
-    context.restore();
-  }
-
-  function drawSeat(obstacle) {
-    const { x, y, width, height, color } = obstacle;
-    fillRoundedRect(x, y, width, height, 22, darken(color, 0.18));
-    fillRoundedRect(x + 9, y + 8, width - 18, height - 20, 18, color);
-    context.fillStyle = "rgba(255,255,255,.18)";
-    fillRoundedRect(x + 14, y + 13, width - 28, 13, 7, "rgba(255,255,255,.18)");
-    const cushionGap = 7;
-    const count = width > 200 ? 3 : 1;
-    const cushionWidth = (width - 30 - cushionGap * (count - 1)) / count;
-    for (let index = 0; index < count; index += 1) {
-      const cushionX = x + 15 + index * (cushionWidth + cushionGap);
-      fillRoundedRect(cushionX, y + 34, cushionWidth, height - 48, 14, lighten(color, 0.08));
-      strokeRoundedRect(cushionX, y + 34, cushionWidth, height - 48, 14, "rgba(255,255,255,.16)", 2);
-    }
-  }
-
-  function drawTable(obstacle) {
-    const { x, y, width, height, color } = obstacle;
-    fillRoundedRect(x + 7, y + 10, width - 14, height - 8, 17, darken(color, 0.25));
-    const gradient = context.createLinearGradient(x, y, x + width, y + height);
-    gradient.addColorStop(0, lighten(color, 0.18));
-    gradient.addColorStop(1, color);
-    fillRoundedRect(x, y, width, height - 12, 17, gradient);
-    strokeRoundedRect(x + 8, y + 8, width - 16, height - 28, 12, "rgba(255,255,255,.25)", 3);
-  }
-
-  function drawTelevision(obstacle) {
-    const { x, y, width, height, color } = obstacle;
-    fillRoundedRect(x, y + 15, width, height - 15, 12, color);
-    const screenGradient = context.createLinearGradient(x, y, x + width, y + height);
-    screenGradient.addColorStop(0, "#171440");
-    screenGradient.addColorStop(1, "#071c33");
-    fillRoundedRect(x + 17, y, width - 34, height - 15, 9, screenGradient);
-    context.fillStyle = "rgba(68,229,231,.28)";
-    context.beginPath();
-    context.moveTo(x + 27, y + 8);
-    context.lineTo(x + width - 30, y + 8);
-    context.lineTo(x + width - 70, y + height - 22);
-    context.lineTo(x + 46, y + height - 22);
-    context.closePath();
-    context.fill();
-  }
-
-  function drawPlant(obstacle) {
-    const centerX = obstacle.x + obstacle.width / 2;
-    const centerY = obstacle.y + obstacle.height / 2;
-    context.save();
-    context.translate(centerX, centerY);
-    for (let index = 0; index < 9; index += 1) {
-      context.save();
-      context.rotate((index / 9) * Math.PI * 2);
-      context.fillStyle = index % 2 ? "#45bb78" : obstacle.color;
-      context.beginPath();
-      context.ellipse(0, -24, 13, 30, 0, 0, Math.PI * 2);
-      context.fill();
-      context.restore();
-    }
-    context.fillStyle = "#ff9868";
-    context.beginPath();
-    context.arc(0, 7, 24, 0, Math.PI * 2);
-    context.fill();
-    context.fillStyle = "rgba(255,255,255,.25)";
-    context.beginPath();
-    context.arc(-7, 1, 7, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
-  }
-
-  function drawCounter(obstacle) {
-    const { x, y, width, height, color } = obstacle;
-    fillRoundedRect(x + 4, y + 10, width - 8, height - 5, 15, darken(color, 0.2));
-    const gradient = context.createLinearGradient(x, y, x + width, y);
-    gradient.addColorStop(0, color);
-    gradient.addColorStop(0.5, lighten(color, 0.12));
-    gradient.addColorStop(1, color);
-    fillRoundedRect(x, y, width, height - 14, 14, gradient);
-    context.fillStyle = "rgba(255,255,255,.3)";
-    fillRoundedRect(x + 12, y + 11, width - 24, 9, 4, "rgba(255,255,255,.3)");
-    if (obstacle.type === "island") {
-      context.fillStyle = "#c9dfe4";
-      context.beginPath();
-      context.ellipse(x + width * 0.72, y + height * 0.38, 35, 20, 0, 0, Math.PI * 2);
-      context.fill();
-      context.strokeStyle = "rgba(0,0,0,.2)";
-      context.lineWidth = 4;
-      context.stroke();
-    }
-  }
-
-  function drawFridge(obstacle) {
-    const { x, y, width, height, color } = obstacle;
-    fillRoundedRect(x, y, width, height, 17, darken(color, 0.17));
-    fillRoundedRect(x + 5, y + 5, width - 10, height - 12, 14, color);
-    context.strokeStyle = "rgba(255,255,255,.45)";
-    context.lineWidth = 3;
-    context.beginPath();
-    context.moveTo(x + 8, y + height * 0.58);
-    context.lineTo(x + width - 8, y + height * 0.58);
-    context.stroke();
-    fillRoundedRect(x + 13, y + 22, 5, 34, 3, "rgba(20,35,60,.35)");
-  }
-
-  function drawCabinet(obstacle) {
-    const { x, y, width, height, color } = obstacle;
-    fillRoundedRect(x, y + 7, width, height - 3, 13, darken(color, 0.2));
-    fillRoundedRect(x, y, width, height - 10, 13, color);
-    const drawerCount = width > 130 ? 3 : 2;
-    for (let index = 0; index < drawerCount; index += 1) {
-      const drawerX = x + 10 + index * ((width - 20) / drawerCount);
-      const drawerWidth = (width - 26) / drawerCount;
-      strokeRoundedRect(drawerX, y + 12, drawerWidth, height - 32, 7, "rgba(255,255,255,.25)", 2);
-      context.fillStyle = "rgba(24,18,58,.5)";
-      context.beginPath();
-      context.arc(drawerX + drawerWidth / 2, y + height / 2 - 3, 3, 0, Math.PI * 2);
-      context.fill();
-    }
-  }
-
-  function drawBed(obstacle) {
-    const { x, y, width, height, color } = obstacle;
-    fillRoundedRect(x, y + 11, width, height - 4, 23, darken(color, 0.25));
-    fillRoundedRect(x, y, width, height - 14, 23, color);
-    const blanketGradient = context.createLinearGradient(x, y, x + width, y + height);
-    blanketGradient.addColorStop(0, lighten(color, 0.2));
-    blanketGradient.addColorStop(1, darken(color, 0.08));
-    fillRoundedRect(x + 18, y + 65, width - 36, height - 91, 18, blanketGradient);
-    fillRoundedRect(x + 22, y + 19, width * 0.38, 50, 17, "#fff4e8");
-    fillRoundedRect(x + width * 0.56, y + 19, width * 0.36, 50, 17, "#fff4e8");
-    context.globalAlpha = 0.16;
-    context.strokeStyle = "#ffffff";
-    context.lineWidth = 4;
-    for (let line = 0; line < 4; line += 1) {
-      context.beginPath();
-      context.moveTo(x + 35, y + 94 + line * 26);
-      context.lineTo(x + width - 35, y + 94 + line * 26);
-      context.stroke();
-    }
-    context.globalAlpha = 1;
-  }
-
-  function drawOttoman(obstacle) {
-    const { x, y, width, height, color } = obstacle;
-    fillRoundedRect(x, y + 9, width, height - 3, 26, darken(color, 0.22));
-    fillRoundedRect(x, y, width, height - 11, 26, color);
-    context.fillStyle = "rgba(255,255,255,.18)";
-    context.beginPath();
-    context.arc(x + width / 2, y + height / 2 - 7, 6, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = "rgba(255,255,255,.14)";
-    context.lineWidth = 3;
-    context.beginPath();
-    context.moveTo(x + 17, y + height / 2 - 7);
-    context.lineTo(x + width - 17, y + height / 2 - 7);
-    context.moveTo(x + width / 2, y + 12);
-    context.lineTo(x + width / 2, y + height - 23);
-    context.stroke();
-  }
-
-  function drawWardrobe(obstacle) {
-    const { x, y, width, height, color } = obstacle;
-    fillRoundedRect(x + 7, y + 8, width - 2, height - 1, 14, darken(color, 0.24));
-    fillRoundedRect(x, y, width, height - 10, 14, color);
-    context.strokeStyle = "rgba(255,255,255,.24)";
-    context.lineWidth = 3;
-    context.beginPath();
-    context.moveTo(x + width / 2, y + 10);
-    context.lineTo(x + width / 2, y + height - 22);
-    context.stroke();
-    context.fillStyle = "rgba(21,16,58,.56)";
-    context.beginPath();
-    context.arc(x + width / 2 - 9, y + height / 2, 4, 0, Math.PI * 2);
-    context.arc(x + width / 2 + 9, y + height / 2, 4, 0, Math.PI * 2);
-    context.fill();
-  }
-
-  function drawHiddenGoldenMouse(timestamp) {
-    const mouse = game.goldMouse;
-    if (!mouse?.hidden) return;
-    context.save();
-    context.globalAlpha = 0.52 + Math.sin(timestamp / 240) * 0.1;
-    drawMouse(mouse, true, timestamp, 0.9);
-    context.restore();
-  }
-
-  function drawMouse(mouse, golden, timestamp, scale = 1) {
-    const image = golden ? images.goldMouse : images.grayMouse;
-    const bob = Math.sin(mouse.bob || timestamp / 190) * 2.4;
-    const width = golden ? 70 : 63;
-    const height = golden ? 30 : 27;
-    drawEntityShadow(mouse.x, mouse.y + 10, width * 0.33, height * 0.3, golden ? "rgba(255,190,0,.28)" : "rgba(38,32,69,.25)");
-    if (golden) drawGoldAura(mouse.x, mouse.y, timestamp, mouse.hidden ? 0.45 : 1);
-    drawImageCentered(image, mouse.x, mouse.y + bob, width, height, mouse.angle, scale, 1);
-  }
-
-  function drawGoldAura(x, y, timestamp, alpha) {
-    context.save();
-    context.translate(x, y);
-    context.globalAlpha = alpha;
-    for (let index = 0; index < 5; index += 1) {
-      const angle = timestamp / 620 + (index / 5) * Math.PI * 2;
-      const radius = 30 + Math.sin(timestamp / 260 + index) * 4;
-      const sparkleX = Math.cos(angle) * radius;
-      const sparkleY = Math.sin(angle) * radius * 0.55;
-      context.fillStyle = index % 2 ? "#fff8bd" : "#ffd34e";
-      context.beginPath();
-      context.arc(sparkleX, sparkleY, 2.2, 0, Math.PI * 2);
-      context.fill();
-    }
-    context.restore();
-  }
-
-  function drawPlayer() {
-    const player = game.player;
-    const bob = Math.sin(player.bob) * (player.moving ? 3 : 1.2);
-    const alpha = player.invulnerable > 0 && Math.floor(player.invulnerable * 12) % 2 === 0 ? 0.46 : 1;
-    drawEntityShadow(player.x, player.y + 21, 48, 16, "rgba(30,18,58,.3)");
-    drawImageCentered(images.hero, player.x, player.y + bob, 128, 87, player.angle, 1, alpha);
-  }
-
-  function drawTrap(timestamp) {
-    const trap = game.trap;
-    if (!trap) return;
-    const time = trap.elapsed;
-
-    if (time < 0.68) {
-      const goldProgress = 1 - smoothstep(0.18, 0.68, time);
-      const goldScale = 0.8 + Math.sin(time * 24) * 0.18;
-      drawGoldAura(trap.startX, trap.startY, timestamp, goldProgress);
-      drawImageCentered(images.goldMouse, trap.startX, trap.startY, 76, 33, trap.goldAngle, goldScale * goldProgress, goldProgress);
-    }
-
-    const reveal = smoothstep(0.2, 0.78, time);
-    const approach = smoothstep(0.68, 1.16, time);
-    const retreat = smoothstep(1.65, 2.24, time);
-    const villainX = lerp(trap.startX, trap.targetX, approach) + Math.cos(trap.angle + Math.PI) * retreat * 72;
-    const villainY = lerp(trap.startY, trap.targetY, approach) + Math.sin(trap.angle + Math.PI) * retreat * 72;
-    const villainScale = Math.max(0, reveal * (1 - retreat * 0.6));
-    const lunge = time > 1.02 && time < 1.35 ? Math.sin(((time - 1.02) / 0.33) * Math.PI) * 22 : 0;
-    const drawX = villainX + Math.cos(trap.angle) * lunge;
-    const drawY = villainY + Math.sin(trap.angle) * lunge;
-    drawEntityShadow(drawX, drawY + 25, 64 * villainScale, 19 * villainScale, "rgba(20,10,36,.4)");
-    drawImageCentered(images.villain, drawX, drawY, 162, 108, trap.angle, villainScale, Math.max(0, 1 - retreat));
-
-    if (time > 1.08 && time < 1.48) drawSwipe(trap, time);
-  }
-
-  function drawSwipe(trap, time) {
-    const progress = clamp((time - 1.08) / 0.4, 0, 1);
-    context.save();
-    context.translate(game.player.x, game.player.y);
-    context.rotate(trap.angle);
-    context.globalAlpha = Math.sin(progress * Math.PI);
-    context.strokeStyle = "#ffffff";
-    context.shadowColor = "#ff426d";
-    context.shadowBlur = 16;
-    context.lineWidth = 7;
-    context.lineCap = "round";
-    for (let index = 0; index < 3; index += 1) {
-      context.beginPath();
-      context.arc(0, 0, 42 + index * 11, -1.05, 0.62);
-      context.stroke();
-    }
-    context.restore();
-  }
-
-  function drawEntityShadow(x, y, radiusX, radiusY, color) {
-    context.save();
-    context.fillStyle = color;
-    context.filter = "blur(4px)";
-    context.beginPath();
-    context.ellipse(x, y, radiusX, radiusY, 0, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
-  }
-
-  function drawImageCentered(image, x, y, width, height, angle, scale = 1, alpha = 1) {
-    context.save();
-    context.translate(x, y);
-    context.rotate(angle);
-    context.scale(scale, scale);
-    context.globalAlpha *= alpha;
-    if (image?.complete && image.naturalWidth > 0) {
-      context.drawImage(image, -width / 2, -height / 2, width, height);
-    } else {
-      context.fillStyle = "#fff";
-      context.beginPath();
-      context.ellipse(0, 0, width / 2, height / 2, 0, 0, Math.PI * 2);
-      context.fill();
-    }
-    context.restore();
-  }
-
-  function drawParticles() {
-    game.particles.forEach((particle) => {
-      const opacity = clamp(particle.life / particle.maximumLife, 0, 1);
-      context.save();
-      context.translate(particle.x, particle.y);
-      context.rotate(particle.rotation);
-      context.globalAlpha = opacity;
-      context.fillStyle = particle.color;
-      context.shadowColor = particle.color;
-      context.shadowBlur = 6;
-      fillRoundedRect(-particle.size / 2, -particle.size / 2, particle.size, particle.size, 2, particle.color);
-      context.restore();
-    });
-  }
-
-  function drawFloatTexts() {
-    game.floatTexts.forEach((item) => {
-      const opacity = clamp(item.life / item.maximumLife, 0, 1);
-      context.save();
-      context.globalAlpha = opacity;
-      context.fillStyle = item.color;
-      context.strokeStyle = "rgba(19, 10, 45, .55)";
-      context.lineWidth = 6;
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      context.font = `950 ${Math.round(24 * item.scale)}px Inter, system-ui, sans-serif`;
-      context.strokeText(item.text, item.x, item.y);
-      context.fillText(item.text, item.x, item.y);
-      context.restore();
-    });
   }
 
   function startCelebration(colors) {
@@ -1487,60 +934,6 @@
       celebrationContext.restore();
     });
     celebrationContext.restore();
-  }
-
-  function fillRoundedRect(x, y, width, height, radius, fill) {
-    context.beginPath();
-    roundedRectanglePath(context, x, y, width, height, radius);
-    context.fillStyle = fill;
-    context.fill();
-  }
-
-  function strokeRoundedRect(x, y, width, height, radius, stroke = context.strokeStyle, lineWidth = context.lineWidth) {
-    context.beginPath();
-    roundedRectanglePath(context, x, y, width, height, radius);
-    context.strokeStyle = stroke;
-    context.lineWidth = lineWidth;
-    context.stroke();
-  }
-
-  function roundedRectanglePath(target, x, y, width, height, radius) {
-    const safeRadius = Math.min(radius, Math.abs(width) / 2, Math.abs(height) / 2);
-    target.moveTo(x + safeRadius, y);
-    target.lineTo(x + width - safeRadius, y);
-    target.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
-    target.lineTo(x + width, y + height - safeRadius);
-    target.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
-    target.lineTo(x + safeRadius, y + height);
-    target.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
-    target.lineTo(x, y + safeRadius);
-    target.quadraticCurveTo(x, y, x + safeRadius, y);
-    target.closePath();
-  }
-
-  function lighten(hex, amount) {
-    return mixHex(hex, "#ffffff", amount);
-  }
-
-  function darken(hex, amount) {
-    return mixHex(hex, "#090822", amount);
-  }
-
-  function mixHex(colorOne, colorTwo, amount) {
-    const first = parseHex(colorOne);
-    const second = parseHex(colorTwo);
-    const mix = (key) => Math.round(first[key] + (second[key] - first[key]) * amount);
-    return `rgb(${mix("red")}, ${mix("green")}, ${mix("blue")})`;
-  }
-
-  function parseHex(hex) {
-    const value = hex.replace("#", "");
-    const normalized = value.length === 3 ? value.split("").map((character) => character + character).join("") : value;
-    return {
-      red: Number.parseInt(normalized.slice(0, 2), 16),
-      green: Number.parseInt(normalized.slice(2, 4), 16),
-      blue: Number.parseInt(normalized.slice(4, 6), 16),
-    };
   }
 
   function clamp(value, minimum, maximum) {
@@ -1702,27 +1095,56 @@
   }
 
   function beginSwipe(event) {
-    if (game.state !== "playing") return;
-    swipePointer = event.pointerId;
-    swipeStart = { x: event.clientX, y: event.clientY };
-    swipeDirection = null;
-    elements.canvas.setPointerCapture?.(event.pointerId);
+    if (game.state !== "playing" || stick.pointer !== null) return;
+    event.preventDefault();
+    stick.pointer = event.pointerId;
+    stick.startX = event.clientX;
+    stick.startY = event.clientY;
+    stick.turn = 0;
+    stick.forward = 0;
+    try {
+      elements.canvas.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Certains navigateurs refusent la capture : le joystick marche quand même.
+    }
     ensureAudioContext();
+    const frame = elements.boardFrame.getBoundingClientRect();
+    elements.touchStick.style.left = `${event.clientX - frame.left}px`;
+    elements.touchStick.style.top = `${event.clientY - frame.top}px`;
+    elements.touchStick.style.setProperty("--knob-x", "0px");
+    elements.touchStick.style.setProperty("--knob-y", "0px");
+    elements.touchStick.classList.add("is-active");
   }
 
   function moveSwipe(event) {
-    if (event.pointerId !== swipePointer || !swipeStart || game.state !== "playing") return;
-    const dx = event.clientX - swipeStart.x;
-    const dy = event.clientY - swipeStart.y;
-    if (Math.hypot(dx, dy) < 16) return;
-    swipeDirection = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
+    if (event.pointerId !== stick.pointer || game.state !== "playing") return;
+    const radius = CONTROLS.stickRadius;
+    let dx = event.clientX - stick.startX;
+    let dy = event.clientY - stick.startY;
+    const length = Math.hypot(dx, dy);
+    if (length > radius) {
+      dx = (dx / length) * radius;
+      dy = (dy / length) * radius;
+    }
+    const deadZone = 0.12;
+    const soften = (value) =>
+      Math.abs(value) < deadZone ? 0 : Math.sign(value) * ((Math.abs(value) - deadZone) / (1 - deadZone));
+    stick.turn = soften(dx / radius);
+    stick.forward = soften(-dy / radius);
+    elements.touchStick.style.setProperty("--knob-x", `${dx}px`);
+    elements.touchStick.style.setProperty("--knob-y", `${dy}px`);
   }
 
   function endSwipe(event) {
-    if (event.pointerId !== swipePointer) return;
-    swipePointer = null;
-    swipeStart = null;
-    swipeDirection = null;
+    if (event.pointerId !== stick.pointer) return;
+    releaseStick();
+  }
+
+  function releaseStick() {
+    stick.pointer = null;
+    stick.turn = 0;
+    stick.forward = 0;
+    elements.touchStick?.classList.remove("is-active");
   }
 
   function openHelp() {
@@ -1779,12 +1201,45 @@
     elements.soundButton.setAttribute("aria-pressed", String(soundEnabled));
     elements.soundButton.setAttribute("aria-label", soundEnabled ? "Couper le son" : "Activer le son");
     bindEvents();
+    try {
+      world3d = createWorld({
+        canvas: elements.canvas,
+        radarCanvas: elements.radarCanvas,
+        labelLayer: elements.labelLayer,
+        world: WORLD,
+      });
+      world3d.setLevel(currentLevel());
+    } catch (error) {
+      console.error(error);
+      showOverlay({
+        kicker: "3D INDISPONIBLE",
+        title: "OUPS…",
+        message: "Ton navigateur ne peut pas afficher la 3D (WebGL). Essaie avec Chrome, Safari ou Firefox à jour.",
+        button: "RÉESSAYER",
+        action: "reload",
+      });
+    }
     resizeCanvas();
     updateInterface();
     registerServiceWorker();
-    await loadAssets();
     lastFrameAt = performance.now();
     if (!animationFrameId) animationFrameId = window.requestAnimationFrame(loop);
+  }
+
+  // Mode test (ajouter ?debug à l'adresse) : donne accès à l'état du jeu
+  // depuis la console du navigateur. Inactif en temps normal.
+  if (new URLSearchParams(window.location.search).has("debug")) {
+    window.chatSouris = {
+      get game() {
+        return game;
+      },
+      setupLevel,
+      hideOverlay,
+      triggerTrap,
+      update,
+      draw,
+      levels: LEVELS,
+    };
   }
 
   initialize();
