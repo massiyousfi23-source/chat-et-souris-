@@ -14,10 +14,9 @@
     <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
     <link rel="preload" href="./assets/characters/hero-sprite.png" as="image">
-    <link rel="preload" href="./assets/characters/villain-sprite.png" as="image">
-    <link rel="preload" href="./assets/characters/mouse-gray-sprite.png" as="image">
-    <link rel="preload" href="./assets/characters/mouse-gold-sprite.png" as="image">
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="modulepreload" href="./vendor/three.core.min.js">
+    <link rel="modulepreload" href="./vendor/three.module.min.js">
+    <link rel="stylesheet" href="./styles.css?v=3d1">
     <style>
       /* Le panneau d'accueil doit rester utilisable sur les petits écrans mobiles. */
       @media (max-width: 560px), (max-height: 760px) {
@@ -156,7 +155,10 @@
         </div>
 
         <div class="board-frame" id="boardFrame">
-          <canvas id="gameCanvas" width="900" height="700" tabindex="0" aria-label="Terrain de jeu. Attrape les souris et évite le piège doré."></canvas>
+          <canvas id="gameCanvas" width="900" height="700" tabindex="0" aria-label="Terrain de jeu en 3D. Attrape les souris et évite le piège doré."></canvas>
+          <div class="label-layer" id="labelLayer" aria-hidden="true"></div>
+          <canvas class="radar" id="radarCanvas" width="120" height="120" aria-label="Radar : position des souris autour du chat"></canvas>
+          <div class="touch-stick" id="touchStick" aria-hidden="true"><span></span></div>
 
           <div class="danger-flash" id="dangerFlash" aria-hidden="true"></div>
           <div class="trap-banner" id="trapBanner" role="status" hidden>
@@ -172,7 +174,7 @@
                 <img id="overlayPortraitImage" src="./assets/characters/hero-sprite.png" alt="">
               </div>
               <h1 id="overlayTitle">CHAT <em>&</em><br>SOURIS</h1>
-              <p id="overlayMessage">Attrape les souris grises. Cherche les dorées derrière les meubles… mais méfie-toi de leur secret.</p>
+              <p id="overlayMessage">Cours derrière le chat et attrape les souris grises. Le radar t'aide à les trouver. Les dorées se cachent derrière les meubles… méfie-toi !</p>
               <div class="overlay-rewards" id="overlayRewards">
                 <span><b class="mouse-dot mouse-dot--gray"></b> +10</span>
                 <span><b class="mouse-dot mouse-dot--gold"></b> +100</span>
@@ -214,26 +216,26 @@
       </section>
 
       <section class="mobile-controls" aria-label="Commandes tactiles">
-        <p>MAINTIENS UNE FLÈCHE · OU GLISSE SUR LE JEU</p>
+        <p>↑ AVANCER · ← → TOURNER · OU GLISSE TON DOIGT SUR LE JEU</p>
         <div class="d-pad">
-          <button class="control-button control-button--up" type="button" data-direction="up" aria-label="Monter">
+          <button class="control-button control-button--up" type="button" data-direction="up" aria-label="Avancer">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7"></path></svg>
           </button>
-          <button class="control-button control-button--left" type="button" data-direction="left" aria-label="Aller à gauche">
+          <button class="control-button control-button--left" type="button" data-direction="left" aria-label="Tourner à gauche">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"></path></svg>
           </button>
           <span class="d-pad-center" aria-hidden="true">🐾</span>
-          <button class="control-button control-button--right" type="button" data-direction="right" aria-label="Aller à droite">
+          <button class="control-button control-button--right" type="button" data-direction="right" aria-label="Tourner à droite">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"></path></svg>
           </button>
-          <button class="control-button control-button--down" type="button" data-direction="down" aria-label="Descendre">
+          <button class="control-button control-button--down" type="button" data-direction="down" aria-label="Reculer">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 9 7 7 7-7"></path></svg>
           </button>
         </div>
       </section>
 
       <footer>
-        <span>FLÈCHES · ZQSD · WASD · TACTILE</span>
+        <span>↑ AVANCER · ← → TOURNER · ZQSD · TACTILE</span>
         <span>INSTALLABLE · HORS CONNEXION</span>
       </footer>
     </main>
@@ -257,6 +259,10 @@
             <p><strong>Attention au faux trésor.</strong><br>Une souris dorée peut devenir le méchant. Son coup de patte retire 50 points.</p>
           </li>
           <li>
+            <span class="rule-icon rule-icon--room">🎮</span>
+            <p><strong>Tu cours derrière le chat.</strong><br>Flèche haut ou Z pour avancer, gauche / droite pour tourner, bas pour reculer. Sur téléphone, pose le doigt sur le jeu et glisse-le comme un joystick. Le radar en haut à droite montre les souris.</p>
+          </li>
+          <li>
             <span class="rule-icon rule-icon--room">⌂</span>
             <p><strong>Trois pièces à explorer.</strong><br>Le salon, la cuisine puis la chambre deviennent progressivement plus rapides.</p>
           </li>
@@ -267,6 +273,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="./game.js" defer></script>
+    <script type="module" src="./game.js?v=3d1"></script>
   </body>
 </html>

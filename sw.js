@@ -1,10 +1,14 @@
-const CACHE_NAME = "chat-souris-v1";
+const CACHE_NAME = "chat-souris-3d-v1";
 
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./game.js",
+  "./styles.css?v=3d1",
+  "./game.js?v=3d1",
+  "./scene3d.js?v=3d1",
+  "./models.js?v=3d1",
+  "./vendor/three.core.min.js",
+  "./vendor/three.module.min.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",
@@ -12,9 +16,7 @@ const APP_SHELL = [
   "./icons/icon-512-maskable.png",
   "./icons/apple-touch-icon.png",
   "./assets/characters/hero-sprite.png",
-  "./assets/characters/villain-sprite.png",
-  "./assets/characters/mouse-gray-sprite.png",
-  "./assets/characters/mouse-gold-sprite.png"
+  "./assets/characters/villain-sprite.png"
 ];
 
 self.addEventListener("install", (event) => {
